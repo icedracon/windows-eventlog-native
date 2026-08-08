@@ -1,0 +1,24 @@
+[package]
+name = "windows-eventlog-native"
+version = "0.1.0-dev"
+edition = "2021"
+license = "MIT"
+authors = ["zevs"]
+description = "Native EvtQuery/EvtNext/EvtRender/EvtSubscribe wrapper for local Windows Event Log channels."
+repository = "https://github.com/icedracon/windows-eventlog-native"
+
+[dependencies]
+windows = { version = "0.61", features = [
+    "Win32_System_EventLog",
+    "Win32_Foundation",
+] }
+windows-core = "0.61"
+quick-xml = "0.36"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+thiserror = "2"
+
+[target.'cfg(not(windows))'.dependencies]
+
+[lib]
+name = "windows_eventlog_native"
+path = "src/lib.rs"
