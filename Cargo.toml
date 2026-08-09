@@ -4,8 +4,12 @@ version = "0.1.0-dev"
 edition = "2021"
 license = "MIT"
 authors = ["zevs"]
-description = "Native EvtQuery/EvtNext/EvtRender/EvtSubscribe wrapper for local Windows Event Log channels."
+description = "Native EvtQuery/EvtNext/EvtRender wrapper for local Windows Event Log channels (Security/System/Application) with parsed EventData. Pre-alpha"
 repository = "https://github.com/icedracon/windows-eventlog-native"
+documentation = "https://docs.rs/windows-eventlog-native"
+readme = "README.md"
+keywords = ["windows", "eventlog", "wevtapi", "evtquery", "security"]
+categories = ["os::windows-apis", "parser-implementations", "api-bindings"]
 
 [dependencies]
 windows = { version = "0.61", features = [
