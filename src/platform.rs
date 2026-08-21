@@ -11,12 +11,14 @@
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
-use windows::core::PCWSTR;
-use windows::Win32::System::EventLog::{
+use core::ffi::c_void;
+use core::ptr;
+use win32_min::eventlog::{
     EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryForwardDirection,
     EvtQueryReverseDirection, EvtQueryTolerateQueryErrors, EvtRender, EvtRenderEventXml,
-    EVT_HANDLE,
+    EVT_HANDLE, NULL_EVT_HANDLE,
 };
+use win32_min::foundation::{GetLastError, PCWSTR};
 
 use crate::error::{Error, Result};
 use crate::event::{parse_event_xml, Event};
@@ -29,12 +31,18 @@ fn to_wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
+/// Small helper: build `Error::Win32` from the last thread-local Win32 error code.
+fn last_win32(context: &'static str) -> Error {
+    let code = unsafe { GetLastError() };
+    Error::Win32 { code, context }
+}
+
 /// Owning iterator over a `EvtQuery` result set. Closes the underlying handle on drop.
 pub struct WinEventIter {
     handle: EVT_HANDLE,
     channel: String,
     /// Small batch of event handles pulled per `EvtNext` call.
-    batch: Vec<isize>,
+    batch: Vec<EVT_HANDLE>,
     /// Position within `batch` of the next handle to render.
     cursor: usize,
     /// Number of valid entries in `batch`.
@@ -51,22 +59,33 @@ impl WinEventIter {
         let query = to_wide(xpath);
 
         let dir_flag = match direction {
-            QueryDirection::Forward => EvtQueryForwardDirection.0,
-            QueryDirection::Reverse => EvtQueryReverseDirection.0,
+            QueryDirection::Forward => EvtQueryForwardDirection,
+            QueryDirection::Reverse => EvtQueryReverseDirection,
         };
         // TolerateQueryErrors: some legacy provider manifests are broken; without this,
         // a single publisher glitch in the channel makes EvtQuery fail outright.
-        let flags = EvtQueryChannelPath.0 | dir_flag | EvtQueryTolerateQueryErrors.0;
+        let flags = EvtQueryChannelPath | dir_flag | EvtQueryTolerateQueryErrors;
 
         let handle = unsafe {
-            EvtQuery(None, PCWSTR(path.as_ptr()), PCWSTR(query.as_ptr()), flags)
-                .map_err(|e| Error::ChannelAccess(channel.to_string(), format!("EvtQuery: {e}")))?
+            EvtQuery(
+                NULL_EVT_HANDLE,
+                PCWSTR(path.as_ptr()),
+                PCWSTR(query.as_ptr()),
+                flags,
+            )
         };
+        if handle == NULL_EVT_HANDLE {
+            let code = unsafe { GetLastError() };
+            return Err(Error::ChannelAccess(
+                channel.to_string(),
+                format!("EvtQuery: Win32 error {code:#010x}"),
+            ));
+        }
 
         Ok(Self {
             handle,
             channel: channel.to_string(),
-            batch: vec![0isize; BATCH],
+            batch: vec![NULL_EVT_HANDLE; BATCH],
             cursor: 0,
             filled: 0,
             exhausted: false,
@@ -81,42 +100,39 @@ impl WinEventIter {
         self.cursor = 0;
         self.filled = 0;
         let mut returned: u32 = 0;
-        let rc = unsafe {
+        let ok = unsafe {
             EvtNext(
                 self.handle,
-                &mut self.batch[..],
+                self.batch.len() as u32,
+                self.batch.as_mut_ptr(),
                 /* timeout ms */ 5_000,
                 /* flags */ 0,
-                &mut returned as *mut u32,
+                &mut returned,
             )
         };
-        match rc {
-            Ok(()) => {
-                self.filled = returned;
-                if returned == 0 {
-                    self.exhausted = true;
-                }
-                Ok(())
+        if ok != 0 {
+            self.filled = returned;
+            if returned == 0 {
+                self.exhausted = true;
             }
-            Err(e) => {
-                // ERROR_NO_MORE_ITEMS = 0x103 = 259. Normal end-of-set — swallow, mark
-                // exhausted, do not surface as an error.
-                let code = e.code().0 as u32 & 0xFFFF;
-                if code == 259 {
-                    self.exhausted = true;
-                    Ok(())
-                } else {
-                    Err(Error::Win32 {
-                        code: e.code().0 as u32,
-                        context: "EvtNext",
-                    })
-                }
+            Ok(())
+        } else {
+            // ERROR_NO_MORE_ITEMS = 259. Normal end-of-set — swallow, mark
+            // exhausted, do not surface as an error.
+            let code = unsafe { GetLastError() };
+            if code == 259 {
+                self.exhausted = true;
+                Ok(())
+            } else {
+                Err(Error::Win32 {
+                    code,
+                    context: "EvtNext",
+                })
             }
         }
     }
 
-    fn render_and_close(&self, raw: isize) -> Result<Event> {
-        let evt_handle = EVT_HANDLE(raw);
+    fn render_and_close(&self, evt_handle: EVT_HANDLE) -> Result<Event> {
         let xml = render_xml(evt_handle)?;
         // Close the per-event handle either way.
         unsafe {
@@ -130,13 +146,13 @@ impl Drop for WinEventIter {
     fn drop(&mut self) {
         // Close any still-buffered event handles first.
         for &raw in &self.batch[self.cursor..self.filled as usize] {
-            if raw != 0 {
+            if raw != NULL_EVT_HANDLE {
                 unsafe {
-                    let _ = EvtClose(EVT_HANDLE(raw));
+                    let _ = EvtClose(raw);
                 }
             }
         }
-        if !self.handle.is_invalid() {
+        if self.handle != NULL_EVT_HANDLE {
             unsafe {
                 let _ = EvtClose(self.handle);
             }
@@ -175,51 +191,46 @@ pub fn render_xml(event: EVT_HANDLE) -> Result<String> {
     // Size query: pass a NULL buffer to learn the required size.
     let probe = unsafe {
         EvtRender(
-            None,
+            NULL_EVT_HANDLE,
             event,
-            EvtRenderEventXml.0,
+            EvtRenderEventXml,
             0,
-            None,
-            &mut used as *mut u32,
-            &mut props as *mut u32,
+            ptr::null_mut(),
+            &mut used,
+            &mut props,
         )
     };
     // Expected: ERROR_INSUFFICIENT_BUFFER (122) with `used` populated.
-    match probe {
-        Ok(()) => {
-            // Zero-byte render — nothing to decode.
-            return Ok(String::new());
-        }
-        Err(e) => {
-            let code = e.code().0 as u32 & 0xFFFF;
-            if code != 122 {
-                return Err(Error::Win32 {
-                    code: e.code().0 as u32,
-                    context: "EvtRender(size probe)",
-                });
-            }
-        }
+    if probe != 0 {
+        // Zero-byte render — nothing to decode.
+        return Ok(String::new());
+    }
+    let code = unsafe { GetLastError() };
+    if code != 122 {
+        return Err(Error::Win32 {
+            code,
+            context: "EvtRender(size probe)",
+        });
     }
 
     // `used` is in bytes; the rendered payload is UTF-16 so allocate u16 slots.
-    let u16_len = (used as usize + 1) / 2;
+    let u16_len = (used as usize).div_ceil(2);
     let mut buf: Vec<u16> = vec![0u16; u16_len];
     let cap_bytes = (buf.len() * 2) as u32;
 
-    unsafe {
+    let ok = unsafe {
         EvtRender(
-            None,
+            NULL_EVT_HANDLE,
             event,
-            EvtRenderEventXml.0,
+            EvtRenderEventXml,
             cap_bytes,
-            Some(buf.as_mut_ptr() as *mut _),
-            &mut used as *mut u32,
-            &mut props as *mut u32,
+            buf.as_mut_ptr() as *mut c_void,
+            &mut used,
+            &mut props,
         )
-        .map_err(|e| Error::Win32 {
-            code: e.code().0 as u32,
-            context: "EvtRender",
-        })?;
+    };
+    if ok == 0 {
+        return Err(last_win32("EvtRender"));
     }
 
     // Trim trailing NUL(s) that EvtRender includes in `used`.
