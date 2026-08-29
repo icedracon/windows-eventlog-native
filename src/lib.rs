@@ -1,7 +1,7 @@
 //! # windows-eventlog-native
 //!
-//! **STATUS: pre-alpha (0.1.0-dev).** Skeleton + partial implementation of a native
-//! `EvtQuery` / `EvtNext` / `EvtRender` wrapper for local Windows Event Log channels.
+//! The 0.2 series implements native `EvtQuery` / `EvtNext` / `EvtRender`
+//! iteration and structured XML parsing for local Windows Event Log channels.
 //!
 //! Powers OPSEC self-check: after running a scan, ask the log directly
 //! "did I light up 4624/4625/4648/4662/4768/4769/4776?" without shelling out to

@@ -2,6 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/windows-eventlog-native.svg)](https://crates.io/crates/windows-eventlog-native)
 [![Docs.rs](https://docs.rs/windows-eventlog-native/badge.svg)](https://docs.rs/windows-eventlog-native)
+[![CI](https://github.com/icedracon/windows-eventlog-native/actions/workflows/ci.yml/badge.svg)](https://github.com/icedracon/windows-eventlog-native/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Native Windows Event Log client for Rust — `EvtQuery` / `EvtNext` / `EvtRender` /
@@ -12,8 +13,11 @@ shell-out required.
 
 ## Status
 
-**`0.1.0-dev`** — pre-alpha, expect breaking changes before `0.1.0`. Part of the
-[icedracon Rust offensive AD ecosystem](https://github.com/icedracon).
+**`0.2` tested companion crate.** Local query, iteration, XML rendering, and
+structured event parsing are implemented on top of `win32-min`; APIs may still
+evolve before 1.0. See the central
+[`win32-min` ecosystem map](https://github.com/icedracon/win32-min/blob/master/ECOSYSTEM.md)
+for compatibility and maturity information.
 
 ## What it does
 
@@ -58,14 +62,16 @@ Security-channel queries require membership in **Event Log Readers** or
   `cfg(windows)` via `EvtRender(EvtRenderEventXml)`.
 - Stubbed / TODO: `EvtSubscribe` push mode, `EVT_HANDLE` bookmarks, remote
   session (`EvtOpenSession`), message-string resolution via `EvtFormatMessage`.
-  See inline `// TODO(0.2):` markers.
 - Not yet: EventLog channel enumeration, publisher metadata cache, high-volume
   batching via `EvtNext` array-size tuning.
 
-Everything above the "working" line is fair game to fail on non-toy queries.
+Unsupported capabilities are kept out of the public workflow rather than
+silently presented as complete.
 
 ## Related icedracon crates
 
+- [`win32-min`](https://github.com/icedracon/win32-min) — verified,
+  dependency-free Win32 ABI foundation used by this crate.
 - [`windows-wmi-com`](https://github.com/icedracon/windows-wmi-com) —
   in-process WMI via COM (~10x faster than DCOM-over-RPC for local queries).
 - [`winrm-pentest`](https://github.com/icedracon/winrm-pentest) — async WinRM
@@ -73,6 +79,12 @@ Everything above the "working" line is fair game to fail on non-toy queries.
 
 Cluster: Windows-native higher-level telemetry + admin surfaces. This crate
 covers the live event pipeline; the other two cover CIM/WMI and remote WSMan.
+
+## Dependencies
+
+- `win32-min >= 0.1.2, < 0.2` with only `eventlog` enabled.
+- `quick-xml`, `chrono`, and `thiserror`; no async runtime or generated Windows
+  bindings.
 
 ## License
 

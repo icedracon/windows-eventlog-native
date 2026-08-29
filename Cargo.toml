@@ -1,14 +1,15 @@
 [package]
 name = "windows-eventlog-native"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
+rust-version = "1.85"
 license = "MIT"
 authors = ["zevs"]
-description = "Native EvtQuery/EvtNext/EvtRender wrapper for local Windows Event Log channels (Security/System/Application) with parsed EventData. Built on win32-min (hand-rolled FFI, no windows-rs)."
+description = "Native Windows Event Log querying and structured XML parsing for DFIR, detection engineering, and security research."
 repository = "https://github.com/icedracon/windows-eventlog-native"
 documentation = "https://docs.rs/windows-eventlog-native"
 readme = "README.md"
-keywords = ["windows", "eventlog", "wevtapi", "evtquery", "security"]
+keywords = ["windows", "eventlog", "dfir", "forensics", "security"]
 categories = ["os::windows-apis", "parser-implementations", "api-bindings"]
 
 [dependencies]
@@ -17,7 +18,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 thiserror = "2"
 
 [target.'cfg(windows)'.dependencies]
-win32-min = { version = "0.1", features = ["eventlog"] }
+win32-min = { version = "0.1.2", features = ["eventlog"] }
 
 [target.'cfg(not(windows))'.dependencies]
 

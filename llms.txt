@@ -1,0 +1,13 @@
+# windows-eventlog-native
+
+> Native Rust querying and structured parsing for modern Windows Event Log
+> channels, designed for DFIR, detection engineering, and security research.
+
+- [README](https://github.com/icedracon/windows-eventlog-native/blob/main/README.md)
+- [API documentation](https://docs.rs/windows-eventlog-native)
+- [Ecosystem map](https://github.com/icedracon/win32-min/blob/master/ECOSYSTEM.md)
+- [ABI foundation](https://github.com/icedracon/win32-min)
+
+The implemented path is local `EvtQuery` to `EvtNext` to `EvtRender` with XML
+and EventData parsing. Subscription, bookmarks, remote sessions, publisher
+message formatting, and channel enumeration are not implemented yet.
