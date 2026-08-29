@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeZone, Utc};
+use quick_xml::escape::resolve_xml_entity;
 use quick_xml::events::Event as XmlEvent;
-use quick_xml::Reader;
+use quick_xml::{Reader, XmlVersion};
 
 use crate::error::{Error, Result};
 
@@ -35,7 +36,6 @@ pub fn rendered_xml(e: &Event) -> String {
 /// shape is stable and small (`<Event><System>…</System><EventData>…</EventData></Event>`).
 pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
 
     let mut record_id: u64 = 0;
     let mut event_id: u32 = 0;
@@ -53,6 +53,40 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
         InDataNamed(String),
         InDataAnon(usize),
     }
+
+    fn apply_text(
+        state: &State,
+        txt: &str,
+        event_id: &mut u32,
+        record_id: &mut u64,
+        channel: &mut String,
+        data: &mut HashMap<String, String>,
+    ) {
+        match state {
+            State::InSystemElement("event_id") => {
+                *event_id = txt.trim().parse().unwrap_or(0);
+            }
+            State::InSystemElement("record_id") => {
+                *record_id = txt.trim().parse().unwrap_or(0);
+            }
+            State::InSystemElement("channel") => {
+                *channel = txt.trim().to_string();
+            }
+            State::InDataNamed(name) => {
+                data.entry(name.clone())
+                    .and_modify(|value| value.push_str(txt))
+                    .or_insert_with(|| txt.to_string());
+            }
+            State::InDataAnon(index) => {
+                let key = format!("Data_{index}");
+                data.entry(key)
+                    .and_modify(|value| value.push_str(txt))
+                    .or_insert_with(|| txt.to_string());
+            }
+            _ => {}
+        }
+    }
+
     let mut state = State::Idle;
     let mut anon_counter = 0usize;
     let mut in_event_data = false;
@@ -72,7 +106,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                         let mut named: Option<String> = None;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"Name" {
-                                if let Ok(v) = attr.unescape_value() {
+                                if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                     named = Some(v.into_owned());
                                 }
                             }
@@ -89,7 +123,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                     "Provider" => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"Name" {
-                                if let Ok(v) = attr.unescape_value() {
+                                if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                     provider = v.into_owned();
                                 }
                             }
@@ -101,7 +135,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                     "TimeCreated" => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"SystemTime" {
-                                if let Ok(v) = attr.unescape_value() {
+                                if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                     // Format: 2024-01-15T12:34:56.7891234Z
                                     if let Ok(t) = DateTime::parse_from_rfc3339(&v) {
                                         time_created = Some(t.with_timezone(&Utc));
@@ -126,7 +160,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                     let mut named: Option<String> = None;
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"Name" {
-                            if let Ok(v) = attr.unescape_value() {
+                            if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                 named = Some(v.into_owned());
                             }
                         }
@@ -143,7 +177,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                 } else if local == "TimeCreated" {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"SystemTime" {
-                            if let Ok(v) = attr.unescape_value() {
+                            if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                 if let Ok(t) = DateTime::parse_from_rfc3339(&v) {
                                     time_created = Some(t.with_timezone(&Utc));
                                 }
@@ -153,7 +187,7 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                 } else if local == "Provider" {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"Name" {
-                            if let Ok(v) = attr.unescape_value() {
+                            if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                 provider = v.into_owned();
                             }
                         }
@@ -161,30 +195,33 @@ pub fn parse_event_xml(xml: &str, default_channel: &str) -> Result<Event> {
                 }
             }
             Ok(XmlEvent::Text(t)) => {
-                let txt = t.unescape().map(|c| c.into_owned()).unwrap_or_default();
-                match &state {
-                    State::InSystemElement("event_id") => {
-                        event_id = txt.trim().parse().unwrap_or(0);
+                let txt = t.xml10_content().unwrap_or_default();
+                apply_text(
+                    &state,
+                    &txt,
+                    &mut event_id,
+                    &mut record_id,
+                    &mut channel,
+                    &mut data,
+                );
+            }
+            Ok(XmlEvent::GeneralRef(reference)) => {
+                let resolved = match reference.resolve_char_ref() {
+                    Ok(Some(character)) => character.to_string(),
+                    Ok(None) => {
+                        let name = std::str::from_utf8(reference.as_ref()).unwrap_or_default();
+                        resolve_xml_entity(name).unwrap_or_default().to_string()
                     }
-                    State::InSystemElement("record_id") => {
-                        record_id = txt.trim().parse().unwrap_or(0);
-                    }
-                    State::InSystemElement("channel") => {
-                        channel = txt.trim().to_string();
-                    }
-                    State::InDataNamed(name) => {
-                        data.entry(name.clone())
-                            .and_modify(|s| s.push_str(&txt))
-                            .or_insert_with(|| txt.clone());
-                    }
-                    State::InDataAnon(idx) => {
-                        let key = format!("Data_{}", idx);
-                        data.entry(key)
-                            .and_modify(|s| s.push_str(&txt))
-                            .or_insert_with(|| txt.clone());
-                    }
-                    _ => {}
-                }
+                    Err(_) => String::new(),
+                };
+                apply_text(
+                    &state,
+                    &resolved,
+                    &mut event_id,
+                    &mut record_id,
+                    &mut channel,
+                    &mut data,
+                );
             }
             Ok(XmlEvent::End(e)) => {
                 let name = e.name();

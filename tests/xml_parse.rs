@@ -66,3 +66,15 @@ fn rendered_xml_round_trip() {
     // rendered_xml() must give back the exact source XML, byte-for-byte.
     assert_eq!(rendered_xml(&e), SEC_4624);
 }
+
+#[test]
+fn xml_entities_are_decoded_after_quick_xml_upgrade() {
+    let xml = r#"<Event><System><Provider Name='A &amp; B'/><EventID>1</EventID><TimeCreated SystemTime='2024-01-15T12:34:56Z'/></System><EventData><Data Name='Command&amp;Line'>a &lt; b &amp;&amp; c &gt; d</Data></EventData></Event>"#;
+    let event = parse_event_xml(xml, "Application").expect("parse escaped XML");
+
+    assert_eq!(event.provider, "A & B");
+    assert_eq!(
+        event.data.get("Command&Line").map(String::as_str),
+        Some("a < b && c > d")
+    );
+}
