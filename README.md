@@ -55,6 +55,20 @@ for evt in iter.take(10) {
 Security-channel queries require membership in **Event Log Readers** or
 **Administrators**. Application is always readable.
 
+## Research workflow
+
+Query common authentication and directory-service audit IDs from the last 30
+minutes without invoking PowerShell or `wevtutil`:
+
+```powershell
+cargo run --example recent_security_events -- 30
+```
+
+The query is local and read-only. Security-channel permissions still apply.
+See the ecosystem's
+[`RESEARCH-WORKFLOWS.md`](https://github.com/icedracon/win32-min/blob/master/RESEARCH-WORKFLOWS.md)
+for the complete workflow set.
+
 ## What works / what does not (this version)
 
 - Working: RenderedXml parsing, `EventData` extraction, FILETIME conversion,

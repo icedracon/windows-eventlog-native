@@ -7,6 +7,8 @@
 - [API documentation](https://docs.rs/windows-eventlog-native)
 - [Ecosystem map](https://github.com/icedracon/win32-min/blob/master/ECOSYSTEM.md)
 - [ABI foundation](https://github.com/icedracon/win32-min)
+- [Security Event Log workflow](https://github.com/icedracon/windows-eventlog-native/blob/main/examples/recent_security_events.rs)
+- [Research workflow index](https://github.com/icedracon/win32-min/blob/master/RESEARCH-WORKFLOWS.md)
 
 The implemented path is local `EvtQuery` to `EvtNext` to `EvtRender` with XML
 and EventData parsing. Subscription, bookmarks, remote sessions, publisher
