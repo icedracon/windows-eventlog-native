@@ -13,7 +13,7 @@ keywords = ["windows", "eventlog", "dfir", "forensics", "security"]
 categories = ["os::windows-apis", "parser-implementations", "api-bindings"]
 
 [dependencies]
-quick-xml = "0.41"
+quick-xml = "0.42"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 thiserror = "2"
 
