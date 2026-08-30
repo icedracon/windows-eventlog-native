@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Prevented Dependabot from proposing `quick-xml` 0.42+ while the crate keeps
+  its Rust 1.85 MSRV and the 0.41 parser API.
+
 ## 0.2.2 - 2026-08-29
 
 - Added a runnable recent Security-channel authentication and directory-service

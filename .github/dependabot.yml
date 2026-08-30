@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # quick-xml 0.42 changes the parser API and requires Rust 1.86. Keep the
+      # crate's documented Rust 1.85 MSRV until a deliberate migration.
+      - dependency-name: quick-xml
+        versions: [">=0.42"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
